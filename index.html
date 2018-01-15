@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<html>
+  <head>
+      <!--
+   index.html
+   
+   Copyright 2018 álex bueno <francisco.manuel.alexander@gmail.com>
+   
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 3 of the License, or
+   (at your option) any later version.
+   
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+   
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+   MA 02110-1301, USA.
+   
+   
+-->
+    <style>
+      rect.bordered {
+        stroke: #E6E6E6;
+        stroke-width:2px;   
+      }
+
+      text.mono {
+        font-size: 9pt;
+        font-family: Consolas, courier;
+        fill: #aaa;
+      }
+
+      text.axis-workweek {
+        fill: #000;
+      }
+
+      text.axis-workweek_year {
+        fill: #000;
+        
+      }
+      text.week_yearLabel{
+          writing-mode: vertical-rl;
+      }
+    </style>
+    <script src="d3.v3.min.js"></script>
+  </head>
+  <body>
+    <header>Percent of tasks finished for each number of year's week  and day of week</header>
+    <section id="plot" name="plot">
+        <div id="chart"></div>
+        <div id="dataset-picker">
+        </div>
+    </section>
+    <script type="text/javascript">
+      daysBetween = function( date1, date2 ) {
+            //Get 1 day in milliseconds
+            var one_day=1000*60*60*24;
+
+            // Convert both dates to milliseconds
+            var date1_ms = date1.getTime();
+            var date2_ms = date2.getTime();
+
+            // Calculate the difference in milliseconds
+            var difference_ms = date2_ms - date1_ms;
+
+            // Convert back to days and return
+            return Math.round(difference_ms/one_day); 
+      }
+      function getWeekNumber(d) {
+        // Copy date so don't modify original
+        d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+        // Set to nearest Thursday: current date + 4 - current day number
+        // Make Sunday's day number 7
+        d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay()||7));
+        // Get first day of year
+        var yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+        // Calculate full weeks to nearest Thursday
+        var weekNo = Math.ceil(( ( (d - yearStart) / 86400000) + 1)/7);
+        // Return array of year and week number
+        return  weekNo+"-"+d.getUTCFullYear();
+      }
+      let date_init_parse = Date.parse("January 1, 2018");
+      let date_init = new Date(date_init_parse);
+      let number_days=daysBetween(date_init,new Date() )+10;
+      let date_init_array=[];
+      if (number_days<300){
+            let number_week = getWeekNumber(date_init);
+            date_init_array.push(number_week)
+          }else{
+            date_init_array.push("")
+          }
+      for (let i=0;i<number_days;i++){
+          date_init.setDate(date_init.getDate() + 1);
+          let number_week = getWeekNumber(date_init);
+          if (number_days<300){
+            if (date_init_array.indexOf(number_week)<0){
+                date_init_array.push(number_week);
+            }
+          }else{
+            date_init_array.push("")
+          }
+      }
+      let margin = { top: 100, right: 0, bottom: 100, left: 30 },
+          width = 960 - margin.left - margin.right,
+          height = 530 - margin.top - margin.bottom,
+          gridSize = Math.floor(width / number_days),
+          gridSize_height = Math.floor(width / 24),
+          legendElementWidth = gridSize_height*2,
+          buckets = 9,
+          colors = ["#ffffd9","#edf8b1","#c7e9b4","#7fcdbb","#41b6c4","#1d91c0","#225ea8","#253494","#081d58"], // alternatively colorbrewer.YlGnBu[9]
+          day_week = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"],
+          week_year = date_init_array;
+          datasets = ["data.tsv"];
+
+      let svg = d3.select("#chart").append("svg")
+          .attr("width", width + margin.left + margin.right)
+          .attr("height", height + margin.top + margin.bottom)
+          .append("g")
+          .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+      let day_weekLabels = svg.selectAll(".day_weekLabel")
+          .data(day_week)
+          .enter().append("text")
+            .text(function (d) { return d; })
+            .attr("x", 0)
+            .attr("y", function (d, i) { return i * gridSize_height; })
+            .style("text-anchor", "end")
+            .attr("transform", "translate(-6," + gridSize / 1.5 + ")")
+            .attr("class", function (d, i) { return ((i >= 0 && i <= 4) ? "day_weekLabel mono axis axis-workweek" : "day_weekLabel mono axis"); });
+
+      let week_yearLabels = svg.selectAll(".week_yearLabel")
+          .data(week_year)
+          .enter().append("text")
+            .text(function(d) { return d; })
+            .attr("x", function(d, i) { return i * gridSize; })
+            .attr("y", 0)
+            .style("text-anchor", "middle")
+            .attr("transform", "translate(" + gridSize / 2 + ", -36) ")
+            .attr("class", function(d, i) { return ((i >= 7 && i <= 16) ? "week_yearLabel mono axis axis-workweek_year" : "week_yearLabel mono axis"); });
+
+      let heatmapChart = function(tsvFile) {
+        d3.tsv(tsvFile,
+        function(d) {
+          return {
+            day_week: +d.day_week,
+            week_year: +d.week_year,
+            value: +d.value
+          };
+        },
+        function(error, data) {
+          let colorScale = d3.scale.threshold().domain([0, 15, 25, 35,50,65,75,85,100]).range([0].concat(colors));
+          /*let colorScale = d3.scale.quantile()
+              .domain([0, buckets - 1, d3.max(data, function (d) { return d.value; })])
+              .range(colors);*/
+
+          let cards = svg.selectAll(".week_year")
+              .data(data, function(d) {return d.day_week+':'+d.week_year;});
+
+          cards.append("title");
+
+          cards.enter().append("rect")
+              .attr("x", function(d) { return (d.week_year - 1) * gridSize; })
+              .attr("y", function(d) { return (d.day_week - 1) * gridSize_height; })
+              .attr("rx", 4)
+              .attr("ry", 4)
+              .attr("class", "week_year bordered")
+              .attr("width", gridSize)
+              .attr("height", gridSize_height)
+              .style("fill", colors[0]);
+
+          cards.transition().duration(1000)
+              .style("fill", function(d) { return colorScale(d.value); });
+
+          cards.select("title").text(function(d) { return d.value; });
+          
+          cards.exit().remove();
+          
+          let legend = svg.selectAll(".legend")
+              .data(colorScale.domain(), function(d) { return d; });
+
+          legend.enter().append("g")
+              .attr("class", "legend");
+
+          legend.append("rect")
+            .attr("x", function(d, i) { return legendElementWidth * i; })
+            .attr("y", height)
+            .attr("width", legendElementWidth)
+            .attr("height", gridSize_height / 2)
+            .style("fill", function(d, i) { return colors[i]; });
+
+          legend.append("text")
+            .attr("class", "mono")
+            .text(function(d) { return "≥ " + Math.round(d); })
+            .attr("x", function(d, i) { return legendElementWidth * i; })
+            .attr("y", height + gridSize_height);
+
+          legend.exit().remove();
+
+        });  
+      };
+
+      heatmapChart(datasets[0]);
+      
+      
+    </script>
+  </body>
+</html>
